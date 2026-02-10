@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown Viewer & Editor</title>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" id="hljs-light">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" id="hljs-dark" disabled>
+<style>
+:root {
+  --bg: #ffffff;
+  --bg-secondary: #f6f8fa;
+  --bg-tertiary: #e9ecef;
+  --text: #1f2937;
+  --text-secondary: #6b7280;
+  --border: #d1d5db;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #dbeafe;
+  --code-bg: #f3f4f6;
+  --shadow: 0 1px 3px rgba(0,0,0,0.1);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.1);
+  --font-body: 'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+  --font-mono: 'Cascadia Code', 'Fira Code', 'Source Code Pro', monospace;
+  --font-size: 16px;
+  --line-height: 1.8;
+  --content-width: 860px;
+  --radius: 8px;
+  --transition: 0.2s ease;
+}
+
+[data-theme="dark"] {
+  --bg: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+  --text: #e6edf3;
+  --text-secondary: #8b949e;
+  --border: #30363d;
+  --accent: #58a6ff;
+  --accent-hover: #79b8ff;
+  --accent-light: #1a3a5c;
+  --code-bg: #1a1f2b;
+  --shadow: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-lg: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  color: var(--text);
+  background: var(--bg);
+  transition: background var(--transition), color var(--transition);
+  overflow: hidden;
+  height: 100vh;
+}
+
+/* ===== TOOLBAR ===== */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  height: 52px;
+  flex-shrink: 0;
+  z-index: 100;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.toolbar-group + .toolbar-group {
+  margin-left: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+}
+
+.toolbar-spacer { flex: 1; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.btn:hover { background: var(--bg-tertiary); border-color: var(--accent); }
+.btn.active { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+.btn-icon { padding: 6px 8px; font-size: 16px; }
+.btn-accent { background: var(--accent); color: #fff; border-color: var(--accent); }
+.btn-accent:hover { background: var(--accent-hover); }
+
+.file-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== LAYOUT ===== */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ===== EDITOR ===== */
+.editor-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 100px;
+  overflow: hidden;
+}
+
+.editor-pane.hidden { display: none; }
+
+/* ===== RESIZER ===== */
+.resizer {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+  transition: background 0.15s;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  background: var(--accent);
+}
+
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 32px;
+  border-left: 1px solid var(--text-secondary);
+  border-right: 1px solid var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.resizer:hover::after,
+.resizer.dragging::after {
+  opacity: 0.6;
+}
+
+.resizer.hidden { display: none; }
+
+.editor-header {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+#editor {
+  flex: 1;
+  width: 100%;
+  padding: 24px;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  tab-size: 2;
+}
+
+/* ===== PREVIEW ===== */
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 100px;
+  overflow: hidden;
+}
+
+.preview-pane.hidden { display: none; }
+
+.preview-header {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
+}
+
+/* ===== MARKDOWN STYLES ===== */
+.markdown-body {
+  max-width: var(--content-width);
+  margin: 0 auto;
+  font-family: var(--font-body);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  color: var(--text);
+  word-wrap: break-word;
+}
+
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--text);
+}
+
+.markdown-body h1 { font-size: 2em; padding-bottom: 0.3em; border-bottom: 2px solid var(--border); }
+.markdown-body h2 { font-size: 1.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--border); }
+.markdown-body h3 { font-size: 1.25em; }
+.markdown-body h4 { font-size: 1.1em; }
+.markdown-body h5 { font-size: 1em; }
+.markdown-body h6 { font-size: 0.9em; color: var(--text-secondary); }
+
+.markdown-body p { margin: 0.8em 0; }
+
+.markdown-body a { color: var(--accent); text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+
+.markdown-body strong { font-weight: 700; }
+.markdown-body em { font-style: italic; }
+
+.markdown-body ul, .markdown-body ol { margin: 0.8em 0; padding-left: 2em; }
+.markdown-body li { margin: 0.3em 0; }
+.markdown-body li > ul, .markdown-body li > ol { margin: 0.2em 0; }
+
+.markdown-body blockquote {
+  margin: 1em 0;
+  padding: 0.5em 1em;
+  border-left: 4px solid var(--accent);
+  background: var(--bg-secondary);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  color: var(--text-secondary);
+}
+.markdown-body blockquote > p { margin: 0.3em 0; }
+
+.markdown-body code {
+  padding: 0.2em 0.4em;
+  background: var(--code-bg);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+}
+
+.markdown-body pre {
+  margin: 1em 0;
+  padding: 16px;
+  background: var(--code-bg);
+  border-radius: var(--radius);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+}
+
+.markdown-body pre code {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.markdown-body table {
+  width: 100%;
+  margin: 1em 0;
+  border-collapse: collapse;
+  border: 1px solid var(--border);
+}
+
+.markdown-body th, .markdown-body td {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.markdown-body th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.markdown-body tr:nth-child(even) { background: var(--bg-secondary); }
+
+.markdown-body img {
+  max-width: 100%;
+  border-radius: var(--radius);
+}
+
+.markdown-body hr {
+  margin: 2em 0;
+  border: none;
+  border-top: 2px solid var(--border);
+}
+
+.markdown-body input[type="checkbox"] {
+  margin-right: 0.5em;
+  transform: scale(1.1);
+}
+
+.markdown-body .task-list-item { list-style: none; margin-left: -1.5em; }
+
+/* ===== DRAG & DROP OVERLAY ===== */
+.drop-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.15);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.drop-overlay.active { display: flex; }
+
+.drop-box {
+  padding: 48px 64px;
+  background: var(--bg);
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+
+.drop-box-icon { font-size: 48px; margin-bottom: 16px; }
+.drop-box-text { font-size: 18px; color: var(--text); font-weight: 600; }
+.drop-box-sub { font-size: 14px; color: var(--text-secondary); margin-top: 8px; }
+
+/* ===== SETTINGS PANEL ===== */
+.settings-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 500;
+}
+
+.settings-overlay.active { display: block; }
+
+.settings-panel {
+  position: fixed;
+  top: 0;
+  right: -420px;
+  width: 400px;
+  height: 100vh;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  z-index: 600;
+  transition: right 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-panel.active { right: 0; }
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.settings-title { font-size: 16px; font-weight: 700; }
+
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+}
+
+.settings-section { margin-bottom: 24px; }
+
+.settings-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.setting-label {
+  font-size: 14px;
+  color: var(--text);
+}
+
+.setting-input {
+  width: 160px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.setting-input:focus { outline: none; border-color: var(--accent); }
+
+select.setting-input { cursor: pointer; }
+
+input[type="color"].setting-input {
+  width: 44px;
+  height: 34px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+input[type="range"].setting-input {
+  width: 120px;
+  padding: 0;
+  border: none;
+  accent-color: var(--accent);
+}
+
+.range-value {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 32px;
+  text-align: right;
+}
+
+.settings-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-footer .btn { flex: 1; justify-content: center; min-width: 80px; }
+
+/* ===== WELCOME SCREEN ===== */
+.welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 32px;
+}
+
+.welcome-icon { font-size: 64px; margin-bottom: 24px; opacity: 0.6; }
+.welcome h2 { font-size: 24px; margin-bottom: 12px; }
+.welcome p { color: var(--text-secondary); margin-bottom: 8px; font-size: 15px; }
+.welcome-actions { margin-top: 24px; display: flex; gap: 12px; }
+
+/* ===== TOAST ===== */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  font-size: 14px;
+  color: var(--text);
+  animation: toastIn 0.3s ease;
+  max-width: 320px;
+}
+
+.toast.success { border-left: 4px solid #22c55e; }
+.toast.error { border-left: 4px solid #ef4444; }
+.toast.info { border-left: 4px solid var(--accent); }
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 768px) {
+  .toolbar { flex-wrap: wrap; height: auto; padding: 8px; }
+  .toolbar-group { flex-wrap: wrap; }
+  .settings-panel { width: 100%; right: -100%; }
+  .btn span.label { display: none; }
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ===== PRINT ===== */
+@media print {
+  .toolbar, .editor-pane, .resizer, .settings-panel, .settings-overlay { display: none !important; }
+  .preview-pane { flex: 1 !important; }
+  .preview-scroll { padding: 0; }
+  .markdown-body { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOOLBAR -->
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <button class="btn" onclick="openFile()" title="ファイルを開く (Ctrl+O)">
+        <span>&#128194;</span><span class="label">開く</span>
+      </button>
+      <button class="btn" onclick="saveMarkdown()" title="Markdownを保存 (Ctrl+S)">
+        <span>&#128190;</span><span class="label">保存</span>
+      </button>
+      <button class="btn" onclick="exportHTML()" title="HTMLとしてエクスポート">
+        <span>&#128196;</span><span class="label">HTML出力</span>
+      </button>
+      <input type="file" id="fileInput" accept=".txt,.md,.markdown" style="display:none" onchange="handleFileSelect(event)">
+      <input type="file" id="settingsFileInput" accept=".json" style="display:none" onchange="handleSettingsImport(event)">
+    </div>
+
+    <div class="toolbar-group">
+      <span class="file-info" id="fileInfo">ファイル未選択</span>
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <div class="toolbar-group">
+      <button class="btn btn-icon active" id="btnSplit" onclick="setViewMode('split')" title="分割表示">&#9881;</button>
+      <button class="btn btn-icon" id="btnEdit" onclick="setViewMode('edit')" title="エディタのみ">&#9998;</button>
+      <button class="btn btn-icon" id="btnPreview" onclick="setViewMode('preview')" title="プレビューのみ">&#128065;</button>
+    </div>
+
+    <div class="toolbar-group">
+      <button class="btn btn-icon" id="btnTheme" onclick="toggleTheme()" title="テーマ切替">&#127769;</button>
+      <button class="btn btn-icon" onclick="toggleSettings()" title="設定 (Ctrl+,)">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+    <!-- EDITOR -->
+    <div class="editor-pane" id="editorPane">
+      <div class="editor-header">Editor</div>
+      <textarea id="editor" spellcheck="false" placeholder="Markdownをここに入力、またはファイルをドラッグ&ドロップ..."></textarea>
+    </div>
+
+    <!-- RESIZER -->
+    <div class="resizer" id="resizer"></div>
+
+    <!-- PREVIEW -->
+    <div class="preview-pane" id="previewPane">
+      <div class="preview-header">Preview</div>
+      <div class="preview-scroll" id="previewScroll">
+        <div class="markdown-body" id="preview">
+          <div class="welcome">
+            <div class="welcome-icon">&#128221;</div>
+            <h2>Markdown Viewer & Editor</h2>
+            <p>テキストファイル(.txt, .md)を読み込んでMarkdownを表示します</p>
+            <p>左のエディタに直接入力するか、ファイルをドラッグ&ドロップしてください</p>
+            <div class="welcome-actions">
+              <button class="btn btn-accent" onclick="openFile()">&#128194; ファイルを開く</button>
+              <button class="btn" onclick="loadSampleMarkdown()">&#128214; サンプルを表示</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- DROP OVERLAY -->
+<div class="drop-overlay" id="dropOverlay">
+  <div class="drop-box">
+    <div class="drop-box-icon">&#128229;</div>
+    <div class="drop-box-text">ファイルをドロップして読み込む</div>
+    <div class="drop-box-sub">.txt / .md ファイルに対応</div>
+  </div>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div class="settings-overlay" id="settingsOverlay" onclick="toggleSettings()"></div>
+<div class="settings-panel" id="settingsPanel">
+  <div class="settings-header">
+    <span class="settings-title">&#9881; 表示設定</span>
+    <button class="btn btn-icon" onclick="toggleSettings()" title="閉じる">&#10005;</button>
+  </div>
+  <div class="settings-body">
+
+    <div class="settings-section">
+      <div class="settings-section-title">テーマ</div>
+      <div class="setting-row">
+        <span class="setting-label">カラーテーマ</span>
+        <select class="setting-input" id="settingTheme" onchange="applyThemeSetting(this.value)">
+          <option value="light">ライト</option>
+          <option value="dark">ダーク</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">アクセントカラー</span>
+        <input type="color" class="setting-input" id="settingAccent" value="#2563eb" onchange="applyAccentColor(this.value)">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">フォント</div>
+      <div class="setting-row">
+        <span class="setting-label">本文フォント</span>
+        <select class="setting-input" id="settingFontBody" onchange="applySetting('--font-body', this.value)">
+          <option value="'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif">Segoe UI / ヒラギノ</option>
+          <option value="'Noto Sans JP', sans-serif">Noto Sans JP</option>
+          <option value="'Yu Gothic', 'Meiryo', sans-serif">游ゴシック / メイリオ</option>
+          <option value="'Georgia', 'Noto Serif JP', serif">Georgia / Noto Serif</option>
+          <option value="'Arial', 'Helvetica', sans-serif">Arial / Helvetica</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">コードフォント</span>
+        <select class="setting-input" id="settingFontMono" onchange="applySetting('--font-mono', this.value)">
+          <option value="'Cascadia Code', 'Fira Code', 'Source Code Pro', monospace">Cascadia Code</option>
+          <option value="'Fira Code', 'Source Code Pro', monospace">Fira Code</option>
+          <option value="'JetBrains Mono', 'Consolas', monospace">JetBrains Mono</option>
+          <option value="'Consolas', 'Monaco', monospace">Consolas</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">フォントサイズ</span>
+        <input type="range" class="setting-input" id="settingFontSize" min="12" max="24" value="16" oninput="applySetting('--font-size', this.value+'px'); this.nextElementSibling.textContent=this.value+'px'">
+        <span class="range-value">16px</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">行間</span>
+        <input type="range" class="setting-input" id="settingLineHeight" min="1.2" max="2.4" step="0.1" value="1.8" oninput="applySetting('--line-height', this.value); this.nextElementSibling.textContent=this.value">
+        <span class="range-value">1.8</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">レイアウト</div>
+      <div class="setting-row">
+        <span class="setting-label">コンテンツ最大幅</span>
+        <input type="range" class="setting-input" id="settingMaxWidth" min="600" max="1200" step="20" value="860" oninput="applySetting('--content-width', this.value+'px'); this.nextElementSibling.textContent=this.value+'px'">
+        <span class="range-value">860px</span>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">角丸サイズ</span>
+        <input type="range" class="setting-input" id="settingRadius" min="0" max="16" value="8" oninput="applySetting('--radius', this.value+'px'); this.nextElementSibling.textContent=this.value+'px'">
+        <span class="range-value">8px</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-section-title">Markdown</div>
+      <div class="setting-row">
+        <span class="setting-label">GFM (GitHub風)</span>
+        <select class="setting-input" id="settingGfm" onchange="updateMarkedOptions()">
+          <option value="true">有効</option>
+          <option value="false">無効</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">改行をそのまま反映</span>
+        <select class="setting-input" id="settingBreaks" onchange="updateMarkedOptions()">
+          <option value="true">有効</option>
+          <option value="false">無効</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-footer">
+    <button class="btn" onclick="exportSettings()">&#128228; 設定を書き出し</button>
+    <button class="btn" onclick="importSettings()">&#128229; 設定を読み込み</button>
+    <button class="btn" onclick="resetSettings()">&#128260; リセット</button>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+// ===== STATE =====
+let currentFile = null;
+let viewMode = 'split';
+let debounceTimer = null;
+
+// ===== MARKED SETUP =====
+function initMarked() {
+  marked.setOptions({
+    gfm: true,
+    breaks: true,
+    highlight: function(code, lang) {
+      if (lang && hljs.getLanguage(lang)) {
+        try { return hljs.highlight(code, { language: lang }).value; } catch (e) {}
+      }
+      try { return hljs.highlightAuto(code).value; } catch (e) {}
+      return code;
+    }
+  });
+}
+initMarked();
+
+// ===== RENDER =====
+function renderPreview() {
+  const text = document.getElementById('editor').value;
+  const preview = document.getElementById('preview');
+  if (!text.trim()) {
+    preview.innerHTML = `
+      <div class="welcome">
+        <div class="welcome-icon">&#128221;</div>
+        <h2>Markdown Viewer & Editor</h2>
+        <p>テキストファイル(.txt, .md)を読み込んでMarkdownを表示します</p>
+        <p>左のエディタに直接入力するか、ファイルをドラッグ&ドロップしてください</p>
+        <div class="welcome-actions">
+          <button class="btn btn-accent" onclick="openFile()">&#128194; ファイルを開く</button>
+          <button class="btn" onclick="loadSampleMarkdown()">&#128214; サンプルを表示</button>
+        </div>
+      </div>`;
+    return;
+  }
+  preview.innerHTML = marked.parse(text);
+  // Re-highlight code blocks
+  preview.querySelectorAll('pre code').forEach(block => {
+    hljs.highlightElement(block);
+  });
+  // Save to localStorage
+  localStorage.setItem('md-editor-content', text);
+}
+
+// ===== EDITOR EVENTS =====
+document.getElementById('editor').addEventListener('input', () => {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(renderPreview, 150);
+});
+
+// Tab support in editor
+document.getElementById('editor').addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ta = e.target;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    ta.value = ta.value.substring(0, start) + '  ' + ta.value.substring(end);
+    ta.selectionStart = ta.selectionEnd = start + 2;
+    renderPreview();
+  }
+});
+
+// ===== FILE OPERATIONS =====
+function openFile() {
+  document.getElementById('fileInput').click();
+}
+
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) loadFile(file);
+  event.target.value = '';
+}
+
+function loadFile(file) {
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('editor').value = e.target.result;
+    currentFile = file.name;
+    document.getElementById('fileInfo').textContent = file.name;
+    renderPreview();
+    toast(`${file.name} を読み込みました`, 'success');
+  };
+  reader.onerror = () => toast('ファイルの読み込みに失敗しました', 'error');
+  reader.readAsText(file, 'UTF-8');
+}
+
+function saveMarkdown() {
+  const text = document.getElementById('editor').value;
+  if (!text.trim()) { toast('保存する内容がありません', 'error'); return; }
+  const name = currentFile || 'document.md';
+  download(name.replace(/\.[^.]+$/, '') + '.md', text, 'text/markdown');
+  toast('Markdownファイルを保存しました', 'success');
+}
+
+function exportHTML() {
+  const preview = document.getElementById('preview').innerHTML;
+  if (!preview.trim() || document.querySelector('.welcome')) {
+    toast('エクスポートする内容がありません', 'error');
+    return;
+  }
+  const settings = gatherSettings();
+  const html = `<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${currentFile || 'Document'}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/${settings.theme === 'dark' ? 'github-dark' : 'github'}.min.css">
+<style>
+:root {
+  --font-body: ${settings.fontBody};
+  --font-mono: ${settings.fontMono};
+  --font-size: ${settings.fontSize};
+  --line-height: ${settings.lineHeight};
+  --content-width: ${settings.maxWidth};
+  --accent: ${settings.accent};
+}
+body {
+  font-family: var(--font-body);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  color: ${settings.theme === 'dark' ? '#e6edf3' : '#1f2937'};
+  background: ${settings.theme === 'dark' ? '#0d1117' : '#ffffff'};
+  padding: 32px;
+  max-width: var(--content-width);
+  margin: 0 auto;
+}
+h1,h2,h3,h4,h5,h6 { margin-top:1.5em; margin-bottom:0.5em; font-weight:700; line-height:1.3; }
+h1 { font-size:2em; padding-bottom:0.3em; border-bottom:2px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; }
+h2 { font-size:1.5em; padding-bottom:0.2em; border-bottom:1px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; }
+h3 { font-size:1.25em; }
+a { color: var(--accent); text-decoration:none; }
+a:hover { text-decoration:underline; }
+ul,ol { padding-left:2em; }
+blockquote { margin:1em 0; padding:0.5em 1em; border-left:4px solid var(--accent); background:${settings.theme === 'dark' ? '#161b22' : '#f6f8fa'}; border-radius:0 8px 8px 0; }
+code { padding:0.2em 0.4em; background:${settings.theme === 'dark' ? '#1a1f2b' : '#f3f4f6'}; border-radius:4px; font-family:var(--font-mono); font-size:0.88em; }
+pre { padding:16px; background:${settings.theme === 'dark' ? '#1a1f2b' : '#f3f4f6'}; border-radius:8px; overflow-x:auto; border:1px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; }
+pre code { padding:0; background:none; font-size:0.9em; line-height:1.5; }
+table { width:100%; border-collapse:collapse; border:1px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; margin:1em 0; }
+th,td { padding:8px 12px; border:1px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; text-align:left; }
+th { background:${settings.theme === 'dark' ? '#161b22' : '#f6f8fa'}; font-weight:600; }
+hr { margin:2em 0; border:none; border-top:2px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; }
+img { max-width:100%; }
+</style>
+</head>
+<body>
+${preview}
+</body>
+</html>`;
+  const name = currentFile ? currentFile.replace(/\.[^.]+$/, '') + '.html' : 'document.html';
+  download(name, html, 'text/html');
+  toast('HTMLファイルをエクスポートしました', 'success');
+}
+
+function download(filename, content, type) {
+  const blob = new Blob([content], { type: type + ';charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ===== RESIZER =====
+let splitRatio = 0.5; // 0..1, fraction for editor pane
+
+(function initResizer() {
+  const resizer = document.getElementById('resizer');
+  const editorPane = document.getElementById('editorPane');
+  const previewPane = document.getElementById('previewPane');
+  const main = document.querySelector('.main');
+  let isDragging = false;
+
+  resizer.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    isDragging = true;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isDragging) return;
+    const rect = main.getBoundingClientRect();
+    const resizerWidth = resizer.offsetWidth;
+    const available = rect.width - resizerWidth;
+    let ratio = (e.clientX - rect.left) / rect.width;
+    // Clamp between 15% and 85%
+    ratio = Math.max(0.15, Math.min(0.85, ratio));
+    splitRatio = ratio;
+    editorPane.style.flex = 'none';
+    previewPane.style.flex = 'none';
+    editorPane.style.width = (ratio * available) + 'px';
+    previewPane.style.width = ((1 - ratio) * available) + 'px';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    resizer.classList.remove('dragging');
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+    localStorage.setItem('md-split-ratio', splitRatio);
+  });
+
+  // Double-click to reset to 50/50
+  resizer.addEventListener('dblclick', () => {
+    splitRatio = 0.5;
+    applySplitRatio();
+    localStorage.setItem('md-split-ratio', splitRatio);
+  });
+})();
+
+function applySplitRatio() {
+  const editorPane = document.getElementById('editorPane');
+  const previewPane = document.getElementById('previewPane');
+  const resizer = document.getElementById('resizer');
+  const main = document.querySelector('.main');
+  const resizerWidth = resizer.offsetWidth;
+  const available = main.getBoundingClientRect().width - resizerWidth;
+  editorPane.style.flex = 'none';
+  previewPane.style.flex = 'none';
+  editorPane.style.width = (splitRatio * available) + 'px';
+  previewPane.style.width = ((1 - splitRatio) * available) + 'px';
+}
+
+// ===== VIEW MODES =====
+function setViewMode(mode) {
+  viewMode = mode;
+  const editor = document.getElementById('editorPane');
+  const preview = document.getElementById('previewPane');
+  const resizer = document.getElementById('resizer');
+
+  document.querySelectorAll('#btnSplit,#btnEdit,#btnPreview').forEach(b => b.classList.remove('active'));
+
+  if (mode === 'split') {
+    editor.classList.remove('hidden');
+    preview.classList.remove('hidden');
+    resizer.classList.remove('hidden');
+    document.getElementById('btnSplit').classList.add('active');
+    // Apply saved ratio
+    applySplitRatio();
+  } else if (mode === 'edit') {
+    editor.classList.remove('hidden');
+    preview.classList.add('hidden');
+    resizer.classList.add('hidden');
+    editor.style.flex = '1';
+    editor.style.width = '';
+    document.getElementById('btnEdit').classList.add('active');
+  } else {
+    editor.classList.add('hidden');
+    preview.classList.remove('hidden');
+    resizer.classList.add('hidden');
+    preview.style.flex = '1';
+    preview.style.width = '';
+    document.getElementById('btnPreview').classList.add('active');
+  }
+  localStorage.setItem('md-view-mode', mode);
+}
+
+// ===== THEME =====
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyThemeSetting(next);
+  document.getElementById('settingTheme').value = next;
+}
+
+function applyThemeSetting(theme) {
+  document.documentElement.setAttribute('data-theme', theme === 'dark' ? 'dark' : '');
+  document.getElementById('hljs-light').disabled = (theme === 'dark');
+  document.getElementById('hljs-dark').disabled = (theme !== 'dark');
+  document.getElementById('btnTheme').innerHTML = theme === 'dark' ? '&#9728;' : '&#127769;';
+  localStorage.setItem('md-theme', theme);
+}
+
+// ===== SETTINGS =====
+function toggleSettings() {
+  const panel = document.getElementById('settingsPanel');
+  const overlay = document.getElementById('settingsOverlay');
+  panel.classList.toggle('active');
+  overlay.classList.toggle('active');
+}
+
+function applySetting(prop, value) {
+  document.documentElement.style.setProperty(prop, value);
+  saveSettingsToStorage();
+}
+
+function applyAccentColor(color) {
+  document.documentElement.style.setProperty('--accent', color);
+  // Generate lighter/darker variants
+  const r = parseInt(color.slice(1,3),16);
+  const g = parseInt(color.slice(3,5),16);
+  const b = parseInt(color.slice(5,7),16);
+  const lighter = `rgba(${r},${g},${b},0.15)`;
+  document.documentElement.style.setProperty('--accent-light', lighter);
+  const darker = `#${Math.max(0,r-30).toString(16).padStart(2,'0')}${Math.max(0,g-30).toString(16).padStart(2,'0')}${Math.max(0,b-30).toString(16).padStart(2,'0')}`;
+  document.documentElement.style.setProperty('--accent-hover', darker);
+  saveSettingsToStorage();
+}
+
+function updateMarkedOptions() {
+  marked.setOptions({
+    gfm: document.getElementById('settingGfm').value === 'true',
+    breaks: document.getElementById('settingBreaks').value === 'true',
+    highlight: function(code, lang) {
+      if (lang && hljs.getLanguage(lang)) {
+        try { return hljs.highlight(code, { language: lang }).value; } catch (e) {}
+      }
+      try { return hljs.highlightAuto(code).value; } catch (e) {}
+      return code;
+    }
+  });
+  renderPreview();
+  saveSettingsToStorage();
+}
+
+function gatherSettings() {
+  return {
+    theme: document.getElementById('settingTheme').value,
+    accent: document.getElementById('settingAccent').value,
+    fontBody: document.getElementById('settingFontBody').value,
+    fontMono: document.getElementById('settingFontMono').value,
+    fontSize: document.getElementById('settingFontSize').value + 'px',
+    lineHeight: document.getElementById('settingLineHeight').value,
+    maxWidth: document.getElementById('settingMaxWidth').value + 'px',
+    radius: document.getElementById('settingRadius').value + 'px',
+    gfm: document.getElementById('settingGfm').value,
+    breaks: document.getElementById('settingBreaks').value,
+    viewMode: viewMode
+  };
+}
+
+function exportSettings() {
+  const settings = gatherSettings();
+  const json = JSON.stringify(settings, null, 2);
+  download('md-viewer-settings.json', json, 'application/json');
+  toast('設定をエクスポートしました', 'success');
+}
+
+function importSettings() {
+  document.getElementById('settingsFileInput').click();
+}
+
+function handleSettingsImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const settings = JSON.parse(e.target.result);
+      applySettingsObject(settings);
+      toast('設定を読み込みました', 'success');
+    } catch (err) {
+      toast('設定ファイルの読み込みに失敗しました', 'error');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function applySettingsObject(s) {
+  if (s.theme) { applyThemeSetting(s.theme); document.getElementById('settingTheme').value = s.theme; }
+  if (s.accent) { document.getElementById('settingAccent').value = s.accent; applyAccentColor(s.accent); }
+  if (s.fontBody) { document.getElementById('settingFontBody').value = s.fontBody; applySetting('--font-body', s.fontBody); }
+  if (s.fontMono) { document.getElementById('settingFontMono').value = s.fontMono; applySetting('--font-mono', s.fontMono); }
+  if (s.fontSize) {
+    const size = parseInt(s.fontSize);
+    document.getElementById('settingFontSize').value = size;
+    document.getElementById('settingFontSize').nextElementSibling.textContent = size + 'px';
+    applySetting('--font-size', size + 'px');
+  }
+  if (s.lineHeight) {
+    document.getElementById('settingLineHeight').value = s.lineHeight;
+    document.getElementById('settingLineHeight').nextElementSibling.textContent = s.lineHeight;
+    applySetting('--line-height', s.lineHeight);
+  }
+  if (s.maxWidth) {
+    const w = parseInt(s.maxWidth);
+    document.getElementById('settingMaxWidth').value = w;
+    document.getElementById('settingMaxWidth').nextElementSibling.textContent = w + 'px';
+    applySetting('--content-width', w + 'px');
+  }
+  if (s.radius) {
+    const r = parseInt(s.radius);
+    document.getElementById('settingRadius').value = r;
+    document.getElementById('settingRadius').nextElementSibling.textContent = r + 'px';
+    applySetting('--radius', r + 'px');
+  }
+  if (s.gfm) { document.getElementById('settingGfm').value = s.gfm; }
+  if (s.breaks) { document.getElementById('settingBreaks').value = s.breaks; }
+  if (s.viewMode) setViewMode(s.viewMode);
+  updateMarkedOptions();
+  saveSettingsToStorage();
+}
+
+function resetSettings() {
+  const defaults = {
+    theme: 'light', accent: '#2563eb',
+    fontBody: "'Segoe UI', 'Hiragino Sans', 'Noto Sans JP', sans-serif",
+    fontMono: "'Cascadia Code', 'Fira Code', 'Source Code Pro', monospace",
+    fontSize: '16px', lineHeight: '1.8', maxWidth: '860px', radius: '8px',
+    gfm: 'true', breaks: 'true', viewMode: 'split'
+  };
+  // Clear custom properties
+  document.documentElement.removeAttribute('style');
+  applySettingsObject(defaults);
+  toast('設定をリセットしました', 'info');
+}
+
+function saveSettingsToStorage() {
+  localStorage.setItem('md-settings', JSON.stringify(gatherSettings()));
+}
+
+function loadSettingsFromStorage() {
+  const saved = localStorage.getItem('md-settings');
+  if (saved) {
+    try { applySettingsObject(JSON.parse(saved)); } catch (e) {}
+  }
+}
+
+// ===== DRAG & DROP =====
+let dragCounter = 0;
+
+document.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  dragCounter++;
+  document.getElementById('dropOverlay').classList.add('active');
+});
+
+document.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    document.getElementById('dropOverlay').classList.remove('active');
+  }
+});
+
+document.addEventListener('dragover', (e) => { e.preventDefault(); });
+
+document.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dragCounter = 0;
+  document.getElementById('dropOverlay').classList.remove('active');
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    const file = files[0];
+    if (file.name.match(/\.(txt|md|markdown)$/i)) {
+      loadFile(file);
+    } else {
+      toast('対応形式: .txt, .md, .markdown', 'error');
+    }
+  }
+});
+
+// ===== KEYBOARD SHORTCUTS =====
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey) {
+    if (e.key === 'o' || e.key === 'O') { e.preventDefault(); openFile(); }
+    if (e.key === 's' || e.key === 'S') { e.preventDefault(); saveMarkdown(); }
+    if (e.key === ',') { e.preventDefault(); toggleSettings(); }
+  }
+});
+
+// ===== TOAST =====
+function toast(message, type = 'info') {
+  const container = document.getElementById('toastContainer');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(10px)';
+    el.style.transition = '0.3s ease';
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+// ===== SAMPLE =====
+function loadSampleMarkdown() {
+  const sample = `# Markdown Viewer サンプル
+
+## テキスト装飾
+
+これは**太字**、*斜体*、~~取り消し線~~、\`インラインコード\`のサンプルです。
+
+[リンクのサンプル](https://example.com)
+
+## リスト
+
+### 順序なしリスト
+- 項目 1
+- 項目 2
+  - ネストされた項目
+  - もう一つ
+- 項目 3
+
+### 順序付きリスト
+1. 最初の項目
+2. 二番目の項目
+3. 三番目の項目
+
+### タスクリスト
+- [x] 完了したタスク
+- [ ] 未完了のタスク
+- [ ] もう一つのタスク
+
+## 引用
+
+> これは引用ブロックです。
+> 複数行にまたがることができます。
+
+## コードブロック
+
+\`\`\`javascript
+function greet(name) {
+  console.log(\`Hello, \${name}!\`);
+  return { message: \`Welcome, \${name}\` };
+}
+
+greet('World');
+\`\`\`
+
+\`\`\`python
+def fibonacci(n):
+    """フィボナッチ数列を生成"""
+    a, b = 0, 1
+    for _ in range(n):
+        yield a
+        a, b = b, a + b
+
+list(fibonacci(10))
+\`\`\`
+
+## テーブル
+
+| 機能 | 対応状況 | 備考 |
+|------|:--------:|------|
+| ファイル読み込み | ✅ | .txt, .md |
+| リアルタイム編集 | ✅ | 分割表示 |
+| テーマ切替 | ✅ | ライト/ダーク |
+| 設定のエクスポート | ✅ | JSON形式 |
+| HTML出力 | ✅ | スタイル込み |
+
+## 水平線
+
+---
+
+## 画像（URL指定）
+
+> 画像はURLで指定可能です: \`![alt](url)\`
+
+## 数式のような表現
+
+E = mc² は物理学で最も有名な方程式の一つです。
+
+## まとめ
+
+このMarkdown Viewerは **単体HTMLファイル** で動作し、以下の特徴があります:
+
+1. 📂 ファイルのドラッグ&ドロップ読み込み
+2. ✏️ リアルタイム編集とプレビュー
+3. 🎨 カスタマイズ可能な表示設定
+4. 💾 設定のJSON書き出し/読み込み
+5. 📄 HTMLエクスポート
+`;
+  document.getElementById('editor').value = sample;
+  currentFile = 'sample.md';
+  document.getElementById('fileInfo').textContent = 'sample.md';
+  renderPreview();
+  toast('サンプルを読み込みました', 'info');
+}
+
+// ===== INIT =====
+window.addEventListener('DOMContentLoaded', () => {
+  // Restore settings
+  loadSettingsFromStorage();
+
+  // Restore content
+  const savedContent = localStorage.getItem('md-editor-content');
+  if (savedContent) {
+    document.getElementById('editor').value = savedContent;
+    renderPreview();
+  }
+
+  // Restore split ratio
+  const savedRatio = localStorage.getItem('md-split-ratio');
+  if (savedRatio) splitRatio = parseFloat(savedRatio);
+
+  // Restore view mode
+  const savedMode = localStorage.getItem('md-view-mode');
+  if (savedMode) setViewMode(savedMode);
+  else applySplitRatio();
+
+  // Re-apply ratio on window resize
+  window.addEventListener('resize', () => {
+    if (viewMode === 'split') applySplitRatio();
+  });
+});
+</script>
+</body>
+</html>
