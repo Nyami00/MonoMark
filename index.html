@@ -1641,30 +1641,54 @@ async function exportPDF() {
   }
   toast('PDFを生成中...', 'info');
   try {
-    const canvas = await html2canvas(preview, {
-      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff',
-      scale: 2,
+    // Clone preview into an off-screen container with a fixed width
+    // so the output is consistent regardless of the current pane size.
+    const a4PxWidth = 794;           // A4 width at 96 dpi
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;width:' + a4PxWidth + 'px;padding:40px 48px;background:' +
+      (getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff') + ';';
+    const clone = preview.cloneNode(true);
+    clone.style.maxWidth = '100%';
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+
+    const dpr = 2;
+    const canvas = await html2canvas(wrapper, {
+      backgroundColor: null,
+      scale: dpr,
       useCORS: true,
       logging: false,
+      width: a4PxWidth,
     });
-    const imgData = canvas.toDataURL('image/png');
+    document.body.removeChild(wrapper);
+
     const { jsPDF } = window.jspdf;
-    const pxToMm = 0.264583;
-    const imgWidthMm = canvas.width * pxToMm / 2;
-    const imgHeightMm = canvas.height * pxToMm / 2;
-    const a4Width = 210;
-    const a4Height = 297;
-    const margin = 10;
-    const contentWidth = a4Width - margin * 2;
-    const scale = contentWidth / imgWidthMm;
-    const scaledHeight = imgHeightMm * scale;
-    const pageContentHeight = a4Height - margin * 2;
-    const totalPages = Math.ceil(scaledHeight / pageContentHeight);
-    const pdf = new jsPDF({ orientation: imgWidthMm > imgHeightMm && totalPages === 1 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    const a4W = 210, a4H = 297, margin = 15;
+    const contentW = a4W - margin * 2;
+    const contentH = a4H - margin * 2;
+
+    // How many CSS-px tall the rendered content is
+    const cssPxHeight = canvas.height / dpr;
+    // Scale factor: map a4PxWidth CSS-px -> contentW mm
+    const pxPerMm = a4PxWidth / contentW;
+    const totalHeightMm = cssPxHeight / pxPerMm;
+
+    const totalPages = Math.max(1, Math.ceil(totalHeightMm / contentH));
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+    // Slice the canvas into per-page chunks so nothing is cut off
+    const sliceHeightPx = Math.floor(canvas.height / totalPages);
     for (let page = 0; page < totalPages; page++) {
       if (page > 0) pdf.addPage();
-      const yOffset = -(page * pageContentHeight) + margin;
-      pdf.addImage(imgData, 'PNG', margin, yOffset, contentWidth, scaledHeight);
+      const sy = page * sliceHeightPx;
+      const sh = Math.min(sliceHeightPx, canvas.height - sy);
+      const pageCanvas = document.createElement('canvas');
+      pageCanvas.width = canvas.width;
+      pageCanvas.height = sh;
+      pageCanvas.getContext('2d').drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
+      const pageImg = pageCanvas.toDataURL('image/png');
+      const imgH = (sh / dpr) / pxPerMm;
+      pdf.addImage(pageImg, 'PNG', margin, margin, contentW, imgH);
     }
     const fileName = (currentFile ? currentFile.replace(/\.[^.]+$/, '') : 'document') + '.pdf';
     pdf.save(fileName);
