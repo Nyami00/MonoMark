@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" id="hljs-light">
@@ -573,6 +574,129 @@ input[type="range"].setting-input {
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
 
+/* ===== SAVE DROPDOWN ===== */
+.dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.dropdown-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all var(--transition);
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.dropdown-toggle:hover { background: var(--bg-tertiary); border-color: var(--accent); }
+
+.dropdown-toggle .arrow {
+  font-size: 10px;
+  margin-left: 2px;
+  transition: transform 0.2s;
+}
+
+.dropdown.open .dropdown-toggle .arrow { transform: rotate(180deg); }
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 200;
+  overflow: hidden;
+}
+
+.dropdown.open .dropdown-menu { display: block; }
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 14px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition);
+}
+
+.dropdown-item:hover { background: var(--bg-tertiary); }
+
+.dropdown-item .item-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+
+.dropdown-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+/* ===== HOVER SAVE BUTTON ===== */
+.saveable-wrapper {
+  position: relative;
+}
+
+.saveable-wrapper .save-element-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  transition: opacity 0.15s, background 0.15s;
+  opacity: 0;
+}
+
+.saveable-wrapper:hover .save-element-btn {
+  display: flex;
+  opacity: 1;
+}
+
+.saveable-wrapper .save-element-btn:hover {
+  background: var(--accent-hover);
+}
+
+.saveable-wrapper::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  pointer-events: none;
+  transition: border-color 0.2s;
+}
+
+.saveable-wrapper:hover::after {
+  border-color: var(--accent);
+}
+
 /* ===== PRINT ===== */
 @media print {
   .toolbar, .editor-pane, .resizer, .settings-panel, .settings-overlay { display: none !important; }
@@ -591,12 +715,23 @@ input[type="range"].setting-input {
       <button class="btn" onclick="openFile()" title="ファイルを開く (Ctrl+O)">
         <span>&#128194;</span><span class="label">開く</span>
       </button>
-      <button class="btn" onclick="saveMarkdown()" title="Markdownを保存 (Ctrl+S)">
-        <span>&#128190;</span><span class="label">保存</span>
-      </button>
-      <button class="btn" onclick="exportHTML()" title="HTMLとしてエクスポート">
-        <span>&#128196;</span><span class="label">HTML出力</span>
-      </button>
+      <div class="dropdown" id="saveDropdown">
+        <button class="dropdown-toggle" onclick="toggleSaveDropdown(event)" title="保存メニュー">
+          <span>&#128190;</span><span class="label">保存</span><span class="arrow">&#9660;</span>
+        </button>
+        <div class="dropdown-menu">
+          <button class="dropdown-item" onclick="saveMarkdown(); closeSaveDropdown();">
+            <span class="item-icon">&#128221;</span> Markdown (.md)
+          </button>
+          <button class="dropdown-item" onclick="exportHTML(); closeSaveDropdown();">
+            <span class="item-icon">&#128196;</span> HTML (.html)
+          </button>
+          <div class="dropdown-sep"></div>
+          <button class="dropdown-item" onclick="exportImage(); closeSaveDropdown();">
+            <span class="item-icon">&#128247;</span> 画像 (.png)
+          </button>
+        </div>
+      </div>
       <input type="file" id="fileInput" accept=".txt,.md,.markdown" style="display:none" onchange="handleFileSelect(event)">
       <input type="file" id="settingsFileInput" accept=".json" style="display:none" onchange="handleSettingsImport(event)">
     </div>
@@ -872,8 +1007,10 @@ function renderPreview() {
   preview.querySelectorAll('pre code').forEach(block => {
     hljs.highlightElement(block);
   });
-  // Render mermaid diagrams
-  renderMermaidDiagrams(preview);
+  // Render mermaid diagrams, then attach hover save buttons
+  renderMermaidDiagrams(preview).then(() => {
+    attachSaveButtons();
+  });
   // Save to localStorage
   localStorage.setItem('md-editor-content', text);
 }
@@ -1473,6 +1610,109 @@ $$
   document.getElementById('fileInfo').textContent = 'sample.md';
   renderPreview();
   toast('サンプルを読み込みました', 'info');
+}
+
+// ===== SAVE DROPDOWN =====
+function toggleSaveDropdown(e) {
+  e.stopPropagation();
+  document.getElementById('saveDropdown').classList.toggle('open');
+}
+
+function closeSaveDropdown() {
+  document.getElementById('saveDropdown').classList.remove('open');
+}
+
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('saveDropdown');
+  if (dd && !dd.contains(e.target)) dd.classList.remove('open');
+});
+
+// ===== IMAGE EXPORT =====
+async function exportImage() {
+  const preview = document.getElementById('preview');
+  if (!preview.innerHTML.trim() || document.querySelector('.welcome')) {
+    toast('エクスポートする内容がありません', 'error');
+    return;
+  }
+  toast('画像を生成中...', 'info');
+  try {
+    const canvas = await html2canvas(preview, {
+      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const link = document.createElement('a');
+    link.download = (currentFile ? currentFile.replace(/\.[^.]+$/, '') : 'document') + '.png';
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    toast('画像を保存しました', 'success');
+  } catch (err) {
+    console.error('Image export error:', err);
+    toast('画像の生成に失敗しました', 'error');
+  }
+}
+
+async function exportElementAsImage(el) {
+  toast('画像を生成中...', 'info');
+  try {
+    const canvas = await html2canvas(el, {
+      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const link = document.createElement('a');
+    const baseName = currentFile ? currentFile.replace(/\.[^.]+$/, '') : 'element';
+    const timestamp = Date.now();
+    link.download = `${baseName}_${timestamp}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    toast('画像を保存しました', 'success');
+  } catch (err) {
+    console.error('Element image export error:', err);
+    toast('画像の生成に失敗しました', 'error');
+  }
+}
+
+// ===== HOVER SAVE BUTTONS =====
+function attachSaveButtons() {
+  // Remove existing wrappers that are stale
+  document.querySelectorAll('.saveable-wrapper').forEach(w => {
+    const inner = w.querySelector('.saveable-inner');
+    if (inner) {
+      w.replaceWith(...inner.childNodes);
+    }
+  });
+
+  const preview = document.getElementById('preview');
+  // Target mermaid diagrams
+  const mermaidDiagrams = preview.querySelectorAll('.mermaid-diagram');
+  // Target KaTeX display math (block)
+  const katexBlocks = preview.querySelectorAll('.katex-display');
+
+  const targets = [...mermaidDiagrams, ...katexBlocks];
+
+  targets.forEach(el => {
+    // Skip if already wrapped
+    if (el.parentElement && el.parentElement.classList.contains('saveable-wrapper')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'saveable-wrapper';
+
+    const btn = document.createElement('button');
+    btn.className = 'save-element-btn';
+    btn.innerHTML = '&#128247; PNG保存';
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      exportElementAsImage(el);
+    });
+
+    el.parentNode.insertBefore(wrapper, el);
+    wrapper.appendChild(el);
+    wrapper.appendChild(btn);
+  });
 }
 
 // ===== INIT =====
