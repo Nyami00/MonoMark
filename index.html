@@ -5,8 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MonoMark - Markdown Viewer & Editor</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📝</text></svg>">
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" id="hljs-light">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css" id="hljs-dark" disabled>
 <style>
@@ -319,6 +322,9 @@ body {
   text-align: left;
 }
 
+.markdown-body td[align="center"], .markdown-body th[align="center"] { text-align: center; }
+.markdown-body td[align="right"], .markdown-body th[align="right"] { text-align: right; }
+
 .markdown-body th {
   background: var(--bg-secondary);
   font-weight: 600;
@@ -329,6 +335,25 @@ body {
 .markdown-body img {
   max-width: 100%;
   border-radius: var(--radius);
+}
+
+/* ===== MERMAID DIAGRAMS ===== */
+.mermaid-diagram {
+  margin: 1em 0;
+  text-align: center;
+  overflow-x: auto;
+}
+
+.mermaid-diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ===== MATH (KaTeX) ===== */
+.markdown-body .katex-display {
+  margin: 1em 0;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .markdown-body hr {
@@ -747,6 +772,7 @@ function initMarked() {
     gfm: true,
     breaks: true,
     highlight: function(code, lang) {
+      if (lang === 'mermaid') return code;
       if (lang && hljs.getLanguage(lang)) {
         try { return hljs.highlight(code, { language: lang }).value; } catch (e) {}
       }
@@ -756,6 +782,68 @@ function initMarked() {
   });
 }
 initMarked();
+
+// ===== MERMAID SETUP =====
+mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
+let mermaidCounter = 0;
+
+async function renderMermaidDiagrams(container) {
+  const mermaidBlocks = container.querySelectorAll('pre code.language-mermaid');
+  if (mermaidBlocks.length === 0) return;
+
+  for (const block of mermaidBlocks) {
+    const pre = block.parentElement;
+    const code = block.textContent || '';
+    const id = 'mermaid-' + (++mermaidCounter);
+
+    const div = document.createElement('div');
+    div.className = 'mermaid-diagram';
+
+    try {
+      const { svg } = await mermaid.render(id, code);
+      div.innerHTML = svg;
+      pre.replaceWith(div);
+    } catch (err) {
+      console.warn('Mermaid render error:', err);
+    }
+  }
+}
+
+// ===== MATH (KaTeX) =====
+function extractMath(text) {
+  const expressions = [];
+  // Block math: $$...$$
+  text = text.replace(/\$\$([\s\S]+?)\$\$/g, (match, expr) => {
+    const id = `%%MATH_BLOCK_${expressions.length}%%`;
+    expressions.push({ id, expr: expr.trim(), displayMode: true });
+    return id;
+  });
+  // Inline math: $...$  (not inside code blocks, not $$)
+  text = text.replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, (match, expr) => {
+    const id = `%%MATH_INLINE_${expressions.length}%%`;
+    expressions.push({ id, expr: expr.trim(), displayMode: false });
+    return id;
+  });
+  return { text, expressions };
+}
+
+function restoreMath(container, expressions) {
+  if (expressions.length === 0) return;
+  let html = container.innerHTML;
+  for (const { id, expr, displayMode } of expressions) {
+    try {
+      const rendered = katex.renderToString(expr, {
+        displayMode,
+        throwOnError: false
+      });
+      html = html.replace(id, rendered);
+    } catch (err) {
+      html = html.replace(id, `<code>${expr}</code>`);
+    }
+  }
+  container.innerHTML = html;
+}
 
 // ===== RENDER =====
 function renderPreview() {
@@ -775,11 +863,17 @@ function renderPreview() {
       </div>`;
     return;
   }
-  preview.innerHTML = marked.parse(text);
+  // Extract math expressions before markdown parsing
+  const { text: processedText, expressions } = extractMath(text);
+  preview.innerHTML = marked.parse(processedText);
+  // Restore math expressions with KaTeX
+  restoreMath(preview, expressions);
   // Re-highlight code blocks
   preview.querySelectorAll('pre code').forEach(block => {
     hljs.highlightElement(block);
   });
+  // Render mermaid diagrams
+  renderMermaidDiagrams(preview);
   // Save to localStorage
   localStorage.setItem('md-editor-content', text);
 }
@@ -801,6 +895,29 @@ document.getElementById('editor').addEventListener('keydown', (e) => {
     ta.selectionStart = ta.selectionEnd = start + 2;
     renderPreview();
   }
+});
+
+// ===== SCROLL SYNC =====
+let isSyncingScroll = false;
+
+document.getElementById('editor').addEventListener('scroll', () => {
+  if (isSyncingScroll || viewMode !== 'split') return;
+  isSyncingScroll = true;
+  const editor = document.getElementById('editor');
+  const previewScroll = document.getElementById('previewScroll');
+  const ratio = editor.scrollTop / Math.max(1, editor.scrollHeight - editor.clientHeight);
+  previewScroll.scrollTop = ratio * (previewScroll.scrollHeight - previewScroll.clientHeight);
+  requestAnimationFrame(() => { isSyncingScroll = false; });
+});
+
+document.getElementById('previewScroll').addEventListener('scroll', () => {
+  if (isSyncingScroll || viewMode !== 'split') return;
+  isSyncingScroll = true;
+  const editor = document.getElementById('editor');
+  const previewScroll = document.getElementById('previewScroll');
+  const ratio = previewScroll.scrollTop / Math.max(1, previewScroll.scrollHeight - previewScroll.clientHeight);
+  editor.scrollTop = ratio * (editor.scrollHeight - editor.clientHeight);
+  requestAnimationFrame(() => { isSyncingScroll = false; });
 });
 
 // ===== FILE OPERATIONS =====
@@ -849,6 +966,7 @@ function exportHTML() {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${currentFile || 'Document'}</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/${settings.theme === 'dark' ? 'github-dark' : 'github'}.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
 <style>
 :root {
   --font-body: ${settings.fontBody};
@@ -881,9 +999,14 @@ pre { padding:16px; background:${settings.theme === 'dark' ? '#1a1f2b' : '#f3f4f
 pre code { padding:0; background:none; font-size:0.9em; line-height:1.5; }
 table { width:100%; border-collapse:collapse; border:1px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; margin:1em 0; }
 th,td { padding:8px 12px; border:1px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; text-align:left; }
+td[align="center"],th[align="center"] { text-align:center; }
+td[align="right"],th[align="right"] { text-align:right; }
 th { background:${settings.theme === 'dark' ? '#161b22' : '#f6f8fa'}; font-weight:600; }
 hr { margin:2em 0; border:none; border-top:2px solid ${settings.theme === 'dark' ? '#30363d' : '#d1d5db'}; }
 img { max-width:100%; }
+.mermaid-diagram { margin:1em 0; text-align:center; overflow-x:auto; }
+.mermaid-diagram svg { max-width:100%; height:auto; }
+.katex-display { margin:1em 0; overflow-x:auto; overflow-y:hidden; }
 </style>
 </head>
 <body>
@@ -1015,6 +1138,15 @@ function applyThemeSetting(theme) {
   document.getElementById('hljs-dark').disabled = (theme !== 'dark');
   document.getElementById('btnTheme').innerHTML = theme === 'dark' ? '&#9728;' : '&#127769;';
   localStorage.setItem('md-theme', theme);
+  // Update mermaid theme and re-render
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: theme === 'dark' ? 'dark' : 'default',
+      securityLevel: 'loose'
+    });
+    renderPreview();
+  }
 }
 
 // ===== SETTINGS =====
@@ -1048,6 +1180,7 @@ function updateMarkedOptions() {
     gfm: document.getElementById('settingGfm').value === 'true',
     breaks: document.getElementById('settingBreaks').value === 'true',
     highlight: function(code, lang) {
+      if (lang === 'mermaid') return code;
       if (lang && hljs.getLanguage(lang)) {
         try { return hljs.highlight(code, { language: lang }).value; } catch (e) {}
       }
@@ -1280,13 +1413,40 @@ list(fibonacci(10))
 
 ## テーブル
 
-| 機能 | 対応状況 | 備考 |
-|------|:--------:|------|
-| ファイル読み込み | ✅ | .txt, .md |
-| リアルタイム編集 | ✅ | 分割表示 |
-| テーマ切替 | ✅ | ライト/ダーク |
-| 設定のエクスポート | ✅ | JSON形式 |
-| HTML出力 | ✅ | スタイル込み |
+左寄せ・中央寄せ・右寄せに対応しています。
+
+| 機能 | 対応状況 | バージョン |
+|------|:--------:|----------:|
+| ファイル読み込み | ✅ | v1.0 |
+| リアルタイム編集 | ✅ | v1.0 |
+| テーマ切替 | ✅ | v1.0 |
+| Mermaid対応 | ✅ | v2.0 |
+| 数式 (KaTeX) | ✅ | v2.0 |
+
+## ダイアグラム (Mermaid)
+
+\`\`\`mermaid
+graph TD
+    A[Markdownを入力] --> B[marked.jsで変換]
+    B --> C{コードブロック?}
+    C -->|Yes| D[highlight.jsでハイライト]
+    C -->|No| E[HTMLプレビュー表示]
+    D --> E
+\`\`\`
+
+## 数式 (LaTeX)
+
+インライン数式: $E = mc^2$ は物理学で最も有名な方程式の一つです。
+
+ブロック数式:
+
+$$
+\\int_{-\\infty}^{\\infty} e^{-x^2} dx = \\sqrt{\\pi}
+$$
+
+$$
+\\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}
+$$
 
 ## 水平線
 
@@ -1295,10 +1455,6 @@ list(fibonacci(10))
 ## 画像（URL指定）
 
 > 画像はURLで指定可能です: \`![alt](url)\`
-
-## 数式のような表現
-
-E = mc² は物理学で最も有名な方程式の一つです。
 
 ## まとめ
 
@@ -1309,6 +1465,8 @@ E = mc² は物理学で最も有名な方程式の一つです。
 3. 🎨 カスタマイズ可能な表示設定
 4. 💾 設定のJSON書き出し/読み込み
 5. 📄 HTMLエクスポート
+6. 📊 Mermaidダイアグラム対応
+7. 📐 数式 (KaTeX) 対応
 `;
   document.getElementById('editor').value = sample;
   currentFile = 'sample.md';
