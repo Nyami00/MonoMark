@@ -9,6 +9,7 @@
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" id="hljs-light">
@@ -727,6 +728,9 @@ input[type="range"].setting-input {
             <span class="item-icon">&#128196;</span> HTML (.html)
           </button>
           <div class="dropdown-sep"></div>
+          <button class="dropdown-item" onclick="exportPDF(); closeSaveDropdown();">
+            <span class="item-icon">&#128213;</span> PDF (.pdf)
+          </button>
           <button class="dropdown-item" onclick="exportImage(); closeSaveDropdown();">
             <span class="item-icon">&#128247;</span> 画像 (.png)
           </button>
@@ -1602,8 +1606,9 @@ $$
 3. 🎨 カスタマイズ可能な表示設定
 4. 💾 設定のJSON書き出し/読み込み
 5. 📄 HTMLエクスポート
-6. 📊 Mermaidダイアグラム対応
-7. 📐 数式 (KaTeX) 対応
+6. 📑 PDFエクスポート
+7. 📊 Mermaidダイアグラム対応
+8. 📐 数式 (KaTeX) 対応
 `;
   document.getElementById('editor').value = sample;
   currentFile = 'sample.md';
@@ -1626,6 +1631,49 @@ document.addEventListener('click', (e) => {
   const dd = document.getElementById('saveDropdown');
   if (dd && !dd.contains(e.target)) dd.classList.remove('open');
 });
+
+// ===== PDF EXPORT =====
+async function exportPDF() {
+  const preview = document.getElementById('preview');
+  if (!preview.innerHTML.trim() || document.querySelector('.welcome')) {
+    toast('エクスポートする内容がありません', 'error');
+    return;
+  }
+  toast('PDFを生成中...', 'info');
+  try {
+    const canvas = await html2canvas(preview, {
+      backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff',
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+    const imgData = canvas.toDataURL('image/png');
+    const { jsPDF } = window.jspdf;
+    const pxToMm = 0.264583;
+    const imgWidthMm = canvas.width * pxToMm / 2;
+    const imgHeightMm = canvas.height * pxToMm / 2;
+    const a4Width = 210;
+    const a4Height = 297;
+    const margin = 10;
+    const contentWidth = a4Width - margin * 2;
+    const scale = contentWidth / imgWidthMm;
+    const scaledHeight = imgHeightMm * scale;
+    const pageContentHeight = a4Height - margin * 2;
+    const totalPages = Math.ceil(scaledHeight / pageContentHeight);
+    const pdf = new jsPDF({ orientation: imgWidthMm > imgHeightMm && totalPages === 1 ? 'landscape' : 'portrait', unit: 'mm', format: 'a4' });
+    for (let page = 0; page < totalPages; page++) {
+      if (page > 0) pdf.addPage();
+      const yOffset = -(page * pageContentHeight) + margin;
+      pdf.addImage(imgData, 'PNG', margin, yOffset, contentWidth, scaledHeight);
+    }
+    const fileName = (currentFile ? currentFile.replace(/\.[^.]+$/, '') : 'document') + '.pdf';
+    pdf.save(fileName);
+    toast('PDFを保存しました', 'success');
+  } catch (err) {
+    console.error('PDF export error:', err);
+    toast('PDFの生成に失敗しました', 'error');
+  }
+}
 
 // ===== IMAGE EXPORT =====
 async function exportImage() {
