@@ -43,4 +43,10 @@
 
 ## License
 
-[Sushi-Ware License](./LICENSE)
+## ライセンス
+
+このブラウザ版 MonoMark は MIT License で公開されています。
+
+デスクトップ版「MonoMark Desktop」は別途有料で提供しており、
+独自の利用規約が適用されます。
+デスクトップ版はで販売予定です。
