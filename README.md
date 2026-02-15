@@ -49,4 +49,22 @@
 
 デスクトップ版「MonoMark Desktop」は別途有料で提供しており、
 独自の利用規約が適用されます。
-デスクトップ版はで販売予定です。
+
+## MonoMark Desktop（有料版）
+
+より高機能なデスクトップ版を BOOTH で販売しています。
+
+🖥 **[MonoMark Desktop を購入する](https://nyami-tech.booth.pm/)**
+
+### Desktop版の追加機能
+
+- フォルダツリー＋複数タブ管理
+- 画像ペースト → img/ 自動保存
+- 改ページ制御付きPDFエクスポート
+- 画像埋め込みHTML単一ファイルエクスポート
+- 完全オフライン動作
+
+## ライセンス
+
+ブラウザ版 MonoMark は [MIT License](LICENSE) で公開されています。
+デスクトップ版 MonoMark Desktop は独自ライセンスです。
