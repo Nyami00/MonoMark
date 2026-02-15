@@ -41,14 +41,10 @@
 - 読み込んだデータの二次利用は一切行いません
 - 安心してご利用ください
 
-## License
-
 ## ライセンス
 
-このブラウザ版 MonoMark は MIT License で公開されています。
-
-デスクトップ版「MonoMark Desktop」は別途有料で提供しており、
-独自の利用規約が適用されます。
+ブラウザ版 MonoMark は [MIT License](LICENSE) で公開されています。
+デスクトップ版 MonoMark Desktop は独自ライセンスです。
 
 ## MonoMark Desktop（有料版）
 
@@ -64,7 +60,4 @@
 - 画像埋め込みHTML単一ファイルエクスポート
 - 完全オフライン動作
 
-## ライセンス
 
-ブラウザ版 MonoMark は [MIT License](LICENSE) で公開されています。
-デスクトップ版 MonoMark Desktop は独自ライセンスです。
