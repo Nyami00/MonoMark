@@ -9,7 +9,6 @@
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
 <script src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" id="hljs-light">
@@ -746,10 +745,6 @@ input[type="range"].setting-input {
           </button>
           <button class="dropdown-item" onclick="exportHTML(); closeSaveDropdown();">
             <span class="item-icon">&#128196;</span> HTML (.html)
-          </button>
-          <div class="dropdown-sep"></div>
-          <button class="dropdown-item" onclick="exportPDF(); closeSaveDropdown();">
-            <span class="item-icon">&#128213;</span> PDF (.pdf)
           </button>
           <button class="dropdown-item" onclick="exportImage(); closeSaveDropdown();">
             <span class="item-icon">&#128247;</span> 画像 (.png)
@@ -1678,73 +1673,6 @@ document.addEventListener('click', (e) => {
   const dd = document.getElementById('saveDropdown');
   if (dd && !dd.contains(e.target)) dd.classList.remove('open');
 });
-
-// ===== PDF EXPORT =====
-async function exportPDF() {
-  const preview = document.getElementById('preview');
-  if (!preview.innerHTML.trim() || document.querySelector('.welcome')) {
-    toast('エクスポートする内容がありません', 'error');
-    return;
-  }
-  toast('PDFを生成中...', 'info');
-  try {
-    // Clone preview into an off-screen container with a fixed width
-    // so the output is consistent regardless of the current pane size.
-    const a4PxWidth = 794;           // A4 width at 96 dpi
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'position:fixed;left:-9999px;top:0;width:' + a4PxWidth + 'px;padding:40px 48px;background:' +
-      (getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#ffffff') + ';';
-    const clone = preview.cloneNode(true);
-    clone.style.maxWidth = '100%';
-    wrapper.appendChild(clone);
-    document.body.appendChild(wrapper);
-
-    const dpr = 2;
-    const canvas = await html2canvas(wrapper, {
-      backgroundColor: null,
-      scale: dpr,
-      useCORS: true,
-      logging: false,
-      width: a4PxWidth,
-    });
-    document.body.removeChild(wrapper);
-
-    const { jsPDF } = window.jspdf;
-    const a4W = 210, a4H = 297, margin = 15;
-    const contentW = a4W - margin * 2;
-    const contentH = a4H - margin * 2;
-
-    // How many CSS-px tall the rendered content is
-    const cssPxHeight = canvas.height / dpr;
-    // Scale factor: map a4PxWidth CSS-px -> contentW mm
-    const pxPerMm = a4PxWidth / contentW;
-    const totalHeightMm = cssPxHeight / pxPerMm;
-
-    const totalPages = Math.max(1, Math.ceil(totalHeightMm / contentH));
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-
-    // Slice the canvas into per-page chunks so nothing is cut off
-    const sliceHeightPx = Math.floor(canvas.height / totalPages);
-    for (let page = 0; page < totalPages; page++) {
-      if (page > 0) pdf.addPage();
-      const sy = page * sliceHeightPx;
-      const sh = Math.min(sliceHeightPx, canvas.height - sy);
-      const pageCanvas = document.createElement('canvas');
-      pageCanvas.width = canvas.width;
-      pageCanvas.height = sh;
-      pageCanvas.getContext('2d').drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh);
-      const pageImg = pageCanvas.toDataURL('image/png');
-      const imgH = (sh / dpr) / pxPerMm;
-      pdf.addImage(pageImg, 'PNG', margin, margin, contentW, imgH);
-    }
-    const fileName = (currentFile ? currentFile.replace(/\.[^.]+$/, '') : 'document') + '.pdf';
-    pdf.save(fileName);
-    toast('PDFを保存しました', 'success');
-  } catch (err) {
-    console.error('PDF export error:', err);
-    toast('PDFの生成に失敗しました', 'error');
-  }
-}
 
 // ===== IMAGE EXPORT =====
 async function exportImage() {
